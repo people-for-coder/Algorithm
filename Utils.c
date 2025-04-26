@@ -1,6 +1,7 @@
 //
 
 #include <stdio.h>
+#include <stdint.h>
 #include "Utils.h"
 
 void printHex(const uint8_t *ptr, int len, char *tag) {
