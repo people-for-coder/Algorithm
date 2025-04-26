@@ -264,105 +264,184 @@ int invMixColumns(uint8_t (*state)[4]) {
     return 0;
 }
 
+/**
+ * @brief 使用AES算法对明文进行加密操作
+ * 
+ * 该函数实现了AES（高级加密标准）的加密功能，支持128位密钥。
+ * 它会将输入的明文按16字节分块，依次对每个块进行加密操作。
+ * 
+ * @param key 指向加密密钥的指针，密钥长度应为16字节
+ * @param keyLen 密钥的长度，单位为字节
+ * @param pt 指向待加密明文的指针
+ * @param ct 指向存储加密后密文的指针
+ * @param len 明文的总长度，必须是16字节的整数倍
+ * @return int 操作成功返回0，参数错误或长度无效时返回 -1
+ */
 int aesEncrypt(const uint8_t *key, uint32_t keyLen, const uint8_t *pt, uint8_t *ct, uint32_t len) {
-
+    // 定义AesKey结构体变量，用于存储扩展后的加密和解密密钥
     AesKey aesKey;
+    // 定义指针，用于指向存储密文的位置，初始指向ct
     uint8_t *pos = ct;
+    // 定义指针，指向扩展后的加密轮密钥数组
     const uint32_t *rk = aesKey.eK;
+    // 定义临时数组，用于存储中间结果，大小为一个块的长度（16字节）
     uint8_t out[BLOCKSIZE] = {0};
+    // 定义数组，用于存储实际的密钥，长度固定为16字节
     uint8_t actualKey[16] = {0};
+    // 定义4x4的状态矩阵，用于存储加密过程中的中间状态
     uint8_t state[4][4] = {0};
 
+    // 检查输入参数是否为NULL，如果存在NULL则输出错误信息并返回 -1
     if (NULL == key || NULL == pt || NULL == ct){
         printf("param err.\n");
         return -1;
     }
 
+    // 检查密钥长度是否超过16字节，若超过则输出错误信息并返回 -1
     if (keyLen > 16){
         printf("keyLen must be 16.\n");
         return -1;
     }
 
+    // 检查明文长度是否为16字节的整数倍，若不是则输出错误信息并返回 -1
     if (len % BLOCKSIZE){
         printf("inLen is invalid.\n");
         return -1;
     }
 
+    // 将输入的密钥复制到actualKey数组中
     memcpy(actualKey, key, keyLen);
+    // 调用keyExpansion函数对密钥进行扩展，生成加密所需的轮密钥
     keyExpansion(actualKey, 16, &aesKey);
 
+    // 对明文进行分块处理，每次处理一个16字节的块
     for (int i = 0; i < len; i += BLOCKSIZE) {
-
+        // 将当前块的明文加载到状态矩阵中
         loadStateArray(state, pt);
+        // 执行初始轮密钥加操作，将初始轮密钥与状态矩阵异或
         addRoundKey(state, rk);
 
+        // 执行9轮加密操作
         for (int j = 1; j < 10; ++j) {
+            // 指向下一轮的加密密钥
             rk += 4;
+            // 执行字节替换操作，使用S盒替换状态矩阵中的每个字节
             subBytes(state);
+            // 执行行移位操作，对状态矩阵的每一行进行循环左移
             shiftRows(state);
+            // 执行列混合操作，对状态矩阵的每一列进行线性变换
             mixColumns(state);
+            // 执行轮密钥加操作，将当前轮密钥与状态矩阵异或
             addRoundKey(state, rk);
         }
 
+        // 最后一轮加密操作，不执行列混合
         subBytes(state);
         shiftRows(state);
+        // 执行最后一轮的轮密钥加操作
         addRoundKey(state, rk+4);
 
+        // 将加密后的状态矩阵存储到密文存储位置
         storeStateArray(state, pos);
 
+        // 移动密文存储指针到下一个块的位置
         pos += BLOCKSIZE;
+        // 移动明文指针到下一个块的位置
         pt += BLOCKSIZE;
+        // 重置轮密钥指针到初始位置
         rk = aesKey.eK;
     }
+    // 加密操作成功，返回0
     return 0;
 }
 
+/**
+ * @brief 使用AES算法对密文进行解密操作
+ * 
+ * 该函数实现了AES（高级加密标准）的解密功能，支持128位密钥。
+ * 它会对输入的密文进行分块处理，每块长度为16字节，然后按照AES解密流程进行操作。
+ * 
+ * @param key 指向加密密钥的指针，密钥长度应为16字节
+ * @param keyLen 密钥的长度，单位为字节
+ * @param ct 指向待解密密文的指针
+ * @param pt 指向存储解密后明文的指针
+ * @param len 密文的总长度，必须是16字节的整数倍
+ * @return int 操作成功返回0，参数错误或长度无效时返回 -1
+ */
 int aesDecrypt(const uint8_t *key, uint32_t keyLen, const uint8_t *ct, uint8_t *pt, uint32_t len) {
+    // 定义AesKey结构体变量，用于存储扩展后的加密和解密密钥
     AesKey aesKey;
+    // 定义指针，用于指向存储明文的位置，初始化为pt
     uint8_t *pos = pt;
+    // 定义指针，用于指向解密轮密钥，初始化为aesKey的解密密钥数组
     const uint32_t *rk = aesKey.dK;
+    // 定义临时数组，用于存储中间结果，长度为一个块的大小（16字节）
     uint8_t out[BLOCKSIZE] = {0};
+    // 定义数组，用于存储实际的密钥，长度为16字节
     uint8_t actualKey[16] = {0};
+    // 定义4x4的状态矩阵，用于存储解密过程中的中间状态
     uint8_t state[4][4] = {0};
 
+    // 检查输入参数是否为NULL，如果有NULL则输出错误信息并返回 -1
     if (NULL == key || NULL == ct || NULL == pt){
         printf("param err.\n");
         return -1;
     }
 
+    // 检查密钥长度是否超过16字节，如果超过则输出错误信息并返回 -1
     if (keyLen > 16){
         printf("keyLen must be 16.\n");
         return -1;
     }
 
+    // 检查密文长度是否为16字节的整数倍，如果不是则输出错误信息并返回 -1
     if (len % BLOCKSIZE){
         printf("inLen is invalid.\n");
         return -1;
     }
 
+    // 将输入的密钥复制到actualKey数组中
     memcpy(actualKey, key, keyLen);
+    // 调用keyExpansion函数对密钥进行扩展，生成加密和解密所需的轮密钥
     keyExpansion(actualKey, 16, &aesKey);
 
+    // 对密文进行分块处理，每次处理一个块（16字节）
     for (int i = 0; i < len; i += BLOCKSIZE) {
+        // 将当前块的密文加载到状态矩阵中
         loadStateArray(state, ct);
+        // 执行初始轮密钥加操作
         addRoundKey(state, rk);
 
+        // 执行9轮解密操作
         for (int j = 1; j < 10; ++j) {
+            // 指向下一轮的解密密钥
             rk += 4;
+            // 执行逆向行移位操作
             invShiftRows(state);
+            // 执行逆向字节替换操作
             invSubBytes(state);
+            // 执行轮密钥加操作
             addRoundKey(state, rk);
+            // 执行逆向列混合操作
             invMixColumns(state);
         }
 
+        // 执行最后一轮的逆向字节替换操作
         invSubBytes(state);
+        // 执行最后一轮的逆向行移位操作
         invShiftRows(state);
+        // 执行最后一轮的轮密钥加操作
         addRoundKey(state, rk+4);
 
+        // 将解密后的状态矩阵存储到明文存储位置
         storeStateArray(state, pos);
+        // 移动明文存储指针到下一个块的位置
         pos += BLOCKSIZE;
+        // 移动密文指针到下一个块的位置
         ct += BLOCKSIZE;
+        // 重置轮密钥指针到初始位置
         rk = aesKey.dK;
     }
+    // 解密操作成功，返回0
     return 0;
 }
